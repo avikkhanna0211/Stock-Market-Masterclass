@@ -1,9 +1,0 @@
-{
-  "name": "stock-market-academy",
-  "version": "1.0.0",
-    "dev": "vercel dev"
-  },
-  "engines": {
-    "node": ">=18.x"
-  }
-
