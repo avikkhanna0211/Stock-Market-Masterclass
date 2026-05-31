@@ -1,0 +1,88 @@
+// Stock Market Academy — AI Tutor
+// Uses Google Gemini 1.5 Flash (FREE — 1,500 req/day)
+// Get free key: https://aistudio.google.com
+// Add GEMINI_API_KEY in Vercel → Settings → Environment Variables
+
+module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  const GEMINI_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_KEY) {
+    return res.status(500).json({
+      error: 'GEMINI_API_KEY not set. Go to Vercel → Settings → Environment Variables and add it.'
+    });
+  }
+
+  try {
+    const { messages = [] } = req.body;
+
+    const geminiContents = messages.map(function(m) {
+      return {
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: m.content }]
+      };
+    });
+
+    const systemInstruction = `You are Stock Market Academy AI Tutor — an expert stock market and trading educator focused on Indian markets. You specialise in:
+
+MARKETS: NSE, BSE, Nifty 50, Sensex, SEBI regulations, Indian brokers (Zerodha, Groww, Upstox, Angel One)
+TECHNICAL ANALYSIS: Candlestick patterns (Hammer, Doji, Engulfing, Morning/Evening Star, Shooting Star, Three White Soldiers, Three Black Crows), RSI, MACD, Bollinger Bands, Fibonacci, Moving Averages, Support & Resistance, Volume, VWAP
+TRADING STRATEGIES: Trend following, breakout, pullback/retest, swing trading, momentum, value investing, Opportunity Confluence
+FUNDAMENTAL ANALYSIS: P/E, EPS, ROE, Debt-to-Equity, Free Cash Flow, PEG ratio, promoter holding, Screener.in
+INDIAN TAXATION (FY 2025-26): LTCG 12.5% with 1.25 lakh exemption, STCG 20%, STT, ITR-2 vs ITR-3, tax harvesting
+RISK MANAGEMENT: 1-2% rule, position sizing, stop-loss, risk:reward ratios, trading psychology
+PORTFOLIO: Diversification, SIP investing, rupee cost averaging, rebalancing, index funds
+
+RULES:
+- Give clear, educational, concise answers using line breaks
+- Use Indian examples: Reliance, TCS, HDFC Bank, Nifty 50
+- Always use rupees not dollars
+- Bold key terms with **bold**
+- Never give specific buy/sell calls on real stocks
+- End investment advice with: Educational only — not financial advice.`;
+
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_KEY,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemInstruction }] },
+          contents: geminiContents,
+          generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const errBody = await response.json().catch(function() { return {}; });
+      const msg = (errBody && errBody.error && errBody.error.message) || ('Gemini error: ' + response.status);
+      if (response.status === 429) {
+        return res.status(429).json({ error: 'Rate limit reached. Wait a minute and try again.' });
+      }
+      return res.status(response.status).json({ error: msg });
+    }
+
+    const data = await response.json();
+    const reply = data &&
+                  data.candidates &&
+                  data.candidates[0] &&
+                  data.candidates[0].content &&
+                  data.candidates[0].content.parts &&
+                  data.candidates[0].content.parts[0] &&
+                  data.candidates[0].content.parts[0].text;
+
+    if (!reply) return res.status(500).json({ error: 'Empty response from Gemini. Try again.' });
+
+    return res.json({ reply: reply });
+
+  } catch (err) {
+    console.error('[SMA Chat Error]', err);
+    return res.status(500).json({ error: 'Server error: ' + err.message });
+  }
+};
